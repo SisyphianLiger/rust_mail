@@ -5,7 +5,6 @@ use std::net::TcpListener;
 
 #[tokio::main]
 async fn main() -> Result<(), std::io::Error> {
-    // Panic if we can't read configuration
     let configuration = get_configuration().expect("Failed to read configuration.");
     let connection = PgPool::connect(&configuration.database.connection_string())
         .await
