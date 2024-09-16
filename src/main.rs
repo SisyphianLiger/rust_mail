@@ -1,8 +1,8 @@
+use env_logger::Env;
 use rust_mail::configuration::get_configuration;
 use rust_mail::startup::run;
 use sqlx::PgPool;
 use std::net::TcpListener;
-use env_logger::Env;
 
 #[tokio::main]
 async fn main() -> Result<(), std::io::Error> {
