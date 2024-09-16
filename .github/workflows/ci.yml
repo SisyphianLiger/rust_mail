@@ -14,7 +14,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  DATABASE_URL: "postgres://app:secret@postgres:5432/newsletter"
+  DATABASE_URL: "postgres://app:secret@127.0.0.1:5432/newsletter"
   SQLX_VERSION: 0.8.0
   SQLX_FEATURES: "rustls,postgres"
   APP_USER: app
