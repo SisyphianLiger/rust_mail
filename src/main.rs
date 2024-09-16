@@ -1,11 +1,17 @@
+use rust_mail::configuration::get_configuration;
+use rust_mail::startup::run;
+use sqlx::PgPool;
 use std::net::TcpListener;
-
-use rust_mail::run;
 
 #[tokio::main]
 async fn main() -> Result<(), std::io::Error> {
-    let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind to random port");
-    let port = listener.local_addr().unwrap().port();
-    println!("Listening at http://127.0.0.1:{}", port);
-    run(listener)?.await
+    // Panic if we can't read configuration
+    let configuration = get_configuration().expect("Failed to read configuration.");
+    let connection = PgPool::connect(&configuration.database.connection_string())
+        .await
+        .expect("Failted to Connect to Postgres");
+
+    let address = format!("127.0.0.1:{}", configuration.application_port);
+    let listener = TcpListener::bind(address)?;
+    run(listener, connection)?.await
 }
