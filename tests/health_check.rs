@@ -1,8 +1,23 @@
 use rust_mail::configuration::{get_configuration, DatabaseSettings};
 use rust_mail::startup::run;
+use rust_mail::telemetry::{get_subscriber, init_subscriber};
+use secrecy::{ExposeSecret, Secret};
 use sqlx::{Connection, Executor, PgConnection, PgPool};
 use std::net::TcpListener;
+use std::sync::LazyLock;
 use uuid::Uuid;
+
+static TRACING: LazyLock<()> = LazyLock::new(|| {
+    let default_filter_level = "info".to_string();
+    let subscriber_name = "test".to_string();
+    if std::env::var("TEST_LOG").is_ok() {
+        let subscriber = get_subscriber(subscriber_name, default_filter_level, std::io::stdout);
+        init_subscriber(subscriber);
+    } else {
+        let subscriber = get_subscriber(subscriber_name, default_filter_level, std::io::sink);
+        init_subscriber(subscriber);
+    }
+});
 
 pub struct TestApp {
     pub address: String,
@@ -21,7 +36,6 @@ async fn health_check_works() {
         .await
         .expect("Failed to execute request");
 
-    println!("{}/health_check", &address.address);
     assert!(response.status().is_success());
     assert_eq!(Some(0), response.content_length());
 }
@@ -77,10 +91,17 @@ async fn subscribe_returns_a_400_when_data_is_missing() {
             "The API did not faile with 400 Bad Request when the payload was {}",
             error_message
         );
+
+        let saved = sqlx::query!("SELECT count(*) FROM subscriptions",)
+            .fetch_one(&app.db_pool)
+            .await
+            .expect("Failed to fetch saved subscription.");
+        assert_eq!(saved.count, Some(0));
     }
 }
-// TODO FIX TESTS!
 async fn spawn_app() -> TestApp {
+    LazyLock::force(&TRACING);
+
     let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind to a random port");
     let port = listener.local_addr().unwrap().port();
     let address = format!("http://127.0.0.1:{}", port);
@@ -101,20 +122,21 @@ pub async fn configure_database(config: &DatabaseSettings) -> PgPool {
     let maintenance_settings = DatabaseSettings {
         database_name: "postgres".to_string(),
         username: "postgres".to_string(),
-        password: "password".to_string(),
+        password: Secret::new("password".to_string()),
         ..config.clone()
     };
 
-    let mut connection = PgConnection::connect(&maintenance_settings.connection_string())
-        .await
-        .expect("Failed to connect to Postgres");
+    let mut connection =
+        PgConnection::connect(&maintenance_settings.connection_string().expose_secret())
+            .await
+            .expect("Failed to connect to Postgres");
 
     connection
         .execute(format!(r#"CREATE DATABASE "{}";"#, config.database_name).as_str())
         .await
         .expect("Failed to create database.");
 
-    let connection_pool = PgPool::connect(&config.connection_string())
+    let connection_pool = PgPool::connect(&config.connection_string().expose_secret())
         .await
         .expect("Failed to connect to Postgres.");
     sqlx::migrate!("./migrations")
